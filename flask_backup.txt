@@ -1,0 +1,707 @@
+Folder Structure:
+=================
+Pipeline/
+├── manage.py
+├── logs/
+│   ├── pipeline.log
+├── project/
+│   ├── __init__.py
+│   ├── client_app/
+│   │   ├── routes.py
+│   │   ├── __init__.py
+│   ├── static/
+│   │   ├── css/
+│   │   │   ├── bootstrap.min.css
+│   │   ├── js/
+│   │   │   ├── bootstrap.bundle.min.js
+│   │   │   ├── jquery.min.js
+│   │   │   ├── script.js
+│   ├── templates/
+│   │   ├── 404.html
+│   │   ├── 500.html
+│   │   ├── base.html
+│   │   ├── home.html
+│   ├── tmp/
+├── tmp/
+
+File Contents:
+==============
+
+manage.py
+=========
+from project import create_app
+
+app = create_app()
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
+
+logs\pipeline.log
+=================
+2024-10-14 13:34:32,510 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 13:34:34,149 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 14:55:41,784 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 14:55:44,308 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 14:58:48,828 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:00:12,204 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:00:13,631 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:01:31,655 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:01:52,134 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:02:43,690 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:02:44,760 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:03:47,236 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:07:29,383 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:09:06,172 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:09:07,649 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:16:21,489 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:19:25,612 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:19:26,668 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:21:00,596 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:23:37,751 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 15:26:14,455 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 16:38:27,601 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+2024-10-14 16:50:11,480 INFO: Pipeline startup [in c:\Users\phillipb\Desktop\Pipeline\project\__init__.py:20]
+
+
+
+project\__init__.py
+===================
+from flask import Flask, render_template
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+
+def create_app():
+    app = Flask(__name__)
+    
+    # Configure logging
+    if not app.debug:
+        if not os.path.exists('logs'):
+            os.mkdir('logs')
+        file_handler = RotatingFileHandler('logs/pipeline.log', maxBytes=10240, backupCount=10)
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        ))
+        file_handler.setLevel(logging.INFO)
+        app.logger.addHandler(file_handler)
+        app.logger.setLevel(logging.INFO)
+        app.logger.info('Pipeline startup')
+
+    # Register Blueprints
+    from .client_app.routes import client_app
+    app.register_blueprint(client_app)
+    
+    # Error handling
+    @app.errorhandler(404)
+    def not_found_error(error):
+        return render_template('404.html'), 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        return render_template('500.html'), 500
+
+    return app
+
+
+project\client_app\routes.py
+============================
+from flask import Blueprint, render_template, request, jsonify
+import os
+import json
+import hashlib
+import time
+import shutil
+
+client_app = Blueprint('client_app', __name__, template_folder='../templates')
+
+# TODO: Replace "XXX" with your actual system name
+SYSTEM_NAME = "XXX"
+
+@client_app.route('/')
+@client_app.route('/home')
+def home():
+    return render_template('home.html')
+
+def generate_file_hash(file_path):
+    hash_md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+@client_app.route('/submit-data', methods=['POST'])
+def submit_data():
+    try:
+        data = json.loads(request.form['json'])
+        file = request.files['file']
+        
+        # Ensure default values are set
+        data.setdefault('approved', 'No')
+        data.setdefault('system', SYSTEM_NAME)
+        
+        save_dir = '/tmp'  # or wherever you want to save
+        
+        # Step 1: Save the file with original name
+        original_file_path = os.path.join(save_dir, data['uploaded_filename'])
+        file.save(original_file_path)
+        print(f"File saved to: {original_file_path}")
+        
+        # Step 2: Rename the file if necessary
+        if data['renameFile'] == 'Yes':
+            new_file_path = os.path.join(save_dir, data['current_filename'])
+            shutil.move(original_file_path, new_file_path)
+            print(f"File renamed to: {new_file_path}")
+        else:
+            new_file_path = original_file_path
+        
+        # Step 3: Hash the file
+        file_hash = generate_file_hash(new_file_path)
+        data['file_hash'] = file_hash
+        print(f"File Hash: {file_hash}")
+        
+        # Step 4: Save JSON
+        json_filename = f"metadata_{int(time.time())}.json"
+        json_path = os.path.join(save_dir, json_filename)
+        with open(json_path, 'w') as f:
+            json.dump(data, f, indent=4)
+        print(f"Metadata saved to: {json_path}")
+        
+        return jsonify({'success': True, 'message': 'File processed and data saved successfully'})
+    
+    except Exception as e:
+        print(f"Error processing file: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+project\client_app\__init__.py
+==============================
+
+
+
+project\static\js\script.js
+===========================
+const fileSaveLocation = './tmp';  //this should be the sinbin location
+const maxFileSizeGB = 20; // Maximum file size in GB
+const systemName = "XXX"; // TODO: Replace "XXX" with your actual system name
+
+$(document).ready(function () {
+    // Prefill button logic
+    $('#preFill').on('click', function () {
+        $('#fileSizeMessage').text(`Maximum upload size is ${maxFileSizeGB} GB`);
+        $('#operation').val('Sample Operation');
+        $('#deviceType').val('windows');
+        $('#serialNumber').val('12345');
+        $('#itemNumber').val('001');
+        $('#subNumber').val('1');
+        $('#collection').val('blue');
+        $('#platform').val('red');
+        $('#dateOfCollection').val(new Date().toISOString().split('T')[0]);
+        $('#knownPasswords').val('password1,password2');
+        $('#notes').val('Sample notes for data ingestion.');
+    });
+
+    // File input change event to update the file name field and check file size
+    $('#selectFile').on('change', function () {
+        const fileInput = $(this)[0];
+        if (fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            $('#fileName').val(file.name);
+            $('#fileSize').text(formatFileSize(file.size));
+            updateRenamePreview();
+            checkFileSize(file);
+        } else {
+            $('#fileName').val('');
+            $('#fileSize').text('');
+            $('#fileSizeMessage').text(`Maximum upload size is ${maxFileSizeGB} GB`).removeClass('text-danger');
+        }
+    });
+
+    // Function to format file size
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Function to check file size and display message
+    function checkFileSize(file) {
+        const fileSizeInGB = file.size / (1024 * 1024 * 1024);
+        const fileSizeMessage = $('#fileSizeMessage');
+        
+        if (fileSizeInGB > maxFileSizeGB) {
+            fileSizeMessage.text(`File is too large. Maximum size is ${maxFileSizeGB} GB. Your file is ${fileSizeInGB.toFixed(2)} GB.`).addClass('text-danger');
+            $('#selectFile').val(''); // Clear the file input
+            $('#fileName').val(''); // Clear the file name field
+            $('#fileSize').text(''); // Clear the file size
+        } else {
+            fileSizeMessage.text(`File size: ${formatFileSize(file.size)} (Max: ${maxFileSizeGB} GB)`).removeClass('text-danger');
+        }
+    }
+
+    // Update rename preview
+    function updateRenamePreview() {
+        const operation = $('#operation').val().replace(/\s+/g, '_');
+        const itemNumber = $('#itemNumber').val();
+        const subNumber = $('#subNumber').val();
+        const deviceType = $('#deviceType').val();
+        const collectionDate = $('#dateOfCollection').val();
+        const fileInput = $('#selectFile')[0];
+        let fileExtension = '';
+
+        if (fileInput.files.length > 0) {
+            const fileName = fileInput.files[0].name;
+            const lastDotIndex = fileName.lastIndexOf('.');
+            if (lastDotIndex !== -1) {
+                fileExtension = fileName.substring(lastDotIndex);
+            }
+        }
+
+        const renamePreview = `${operation}_${itemNumber}-${subNumber}_${deviceType}_${collectionDate}${fileExtension}`;
+        $('#renamePreview').val(renamePreview);
+    }
+
+    // Update rename preview on changes
+    $('#operation, #itemNumber, #subNumber, #deviceType, #dateOfCollection').on('input change', function () {
+        updateRenamePreview();
+    });
+
+    // Event listener for submit button
+    $('#openConfirmationModal').on('click', function () {
+        const fileInput = document.getElementById('selectFile');
+        const operation = document.getElementById('operation').value;
+        const deviceType = document.getElementById('deviceType').value;
+        const serialNumber = document.getElementById('serialNumber').value;
+        const itemNumber = document.getElementById('itemNumber').value;
+        const subNumber = document.getElementById('subNumber').value;
+        const collection = document.getElementById('collection').value;
+        const platform = document.getElementById('platform').value;
+        const dateOfCollection = document.getElementById('dateOfCollection').value;
+        const knownPasswords = document.getElementById('knownPasswords').value;
+        const notes = document.getElementById('notes').value;
+        const renameFileChecked = document.getElementById('renameFileCheck').checked;
+        const pn03Checked = document.getElementById('pn03').checked;
+        const pn04Checked = document.getElementById('pn04').checked;
+
+        let confirmationTableBody = document.getElementById('confirmationTableBody');
+        confirmationTableBody.innerHTML = '';
+
+        const fields = [
+            { name: 'File', value: fileInput.files.length > 0 ? `${fileInput.files[0].name} (${formatFileSize(fileInput.files[0].size)})` : 'No file selected' },
+            { name: 'Operation', value: operation },
+            { name: 'Device Type', value: deviceType },
+            { name: 'Serial Number', value: serialNumber },
+            { name: 'Item Number', value: itemNumber },
+            { name: 'Sub Number', value: subNumber },
+            { name: 'Collection', value: collection },
+            { name: 'Platform', value: platform },
+            { name: 'Date of Collection', value: dateOfCollection },
+            { name: 'Known Passwords', value: knownPasswords },
+            { name: 'Notes', value: notes },
+            { name: 'Rename File', value: renameFileChecked ? 'Yes' : 'No' },
+            { name: 'Manual Processing PN03', value: pn03Checked ? 'Yes' : 'No' },
+            { name: 'Manual Processing PN04', value: pn04Checked ? 'Yes' : 'No' }
+        ];
+
+        fields.forEach((field, index) => {
+            let row = `<tr>
+                <td>${field.name}</td>
+                <td>${field.value}</td>
+                <td class="text-center">
+                    <input type='checkbox' class='review-checkbox' data-index='${index}'>
+                </td>
+            </tr>`;
+            confirmationTableBody.innerHTML += row;
+        });
+
+        // Reset submit button state
+        $('#confirmSubmit').prop('disabled', true);
+
+        // Add event listeners to checkboxes
+        $('.review-checkbox').on('change', function() {
+            updateSubmitButtonState();
+        });
+
+        const confirmationModal = new bootstrap.Modal(document.getElementById('confirmationModal'));
+        confirmationModal.show();
+    });
+
+    // Function to update submit button state
+    function updateSubmitButtonState() {
+        const allChecked = $('.review-checkbox:checked').length === $('.review-checkbox').length;
+        $('#confirmSubmit').prop('disabled', !allChecked);
+    }
+
+    // Cancel review button logic
+    $('#cancelReview').on('click', function () {
+        const confirmationModal = bootstrap.Modal.getInstance(document.getElementById('confirmationModal'));
+        confirmationModal.hide();
+
+        // Ensure modal backdrop is removed after cancel is clicked and restore scrolling
+        $('body').removeClass('modal-open');
+        $('.modal-backdrop').remove();
+        $('body').css('overflow', 'auto');
+    });
+
+    // Ensure only one PN checkbox is checked at a time
+    $('#pn03').on('change', function () {
+        if ($(this).is(':checked')) {
+            $('#pn04').prop('checked', false);
+        }
+    });
+    $('#pn04').on('change', function () {
+        if ($(this).is(':checked')) {
+            $('#pn03').prop('checked', false);
+        }
+    });
+
+    // Function to show progress modal
+function showProgressModal() {
+    const modalHtml = `
+    <div class="modal fade" id="progressModal" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="progressModalLabel">Processing File</h5>
+                </div>
+                <div class="modal-body">
+                    <div id="progressText">Processing your file. Please wait...</div>
+                    <div class="progress mt-3">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
+    progressModal.show();
+}
+
+// Submit button logic
+    $('#confirmSubmit').on('click', function () {
+        const fileInput = $('#selectFile')[0];
+        const originalFilename = fileInput.files.length > 0 ? fileInput.files[0].name : 'No file selected';
+        const renameFileChecked = $('#renameFileCheck').is(':checked');
+        const newFilename = renameFileChecked ? $('#renamePreview').val() : originalFilename;
+
+        const jsonData = {
+            uploaded_filename: originalFilename,
+            current_filename: newFilename,
+            fileSize: fileInput.files.length > 0 ? formatFileSize(fileInput.files[0].size) : 'N/A',
+            operation: $('#operation').val(),
+            deviceType: $('#deviceType').val(),
+            serialNumber: $('#serialNumber').val(),
+            itemNumber: $('#itemNumber').val(),
+            subNumber: $('#subNumber').val(),
+            collection: $('#collection').val(),
+            platform: $('#platform').val(),
+            dateOfCollection: $('#dateOfCollection').val(),
+            knownPasswords: $('#knownPasswords').val(),
+            notes: $('#notes').val(),
+            renameFile: renameFileChecked ? 'Yes' : 'No',
+            manualProcessingPN03: $('#pn03').is(':checked') ? 'Yes' : 'No',
+            manualProcessingPN04: $('#pn04').is(':checked') ? 'Yes' : 'No',
+            approved: 'No', // Default JSON option
+            system: systemName // Default JSON option
+        };
+
+    const formData = new FormData();
+    formData.append('json', JSON.stringify(jsonData));
+    
+    if (fileInput.files.length > 0) {
+        formData.append('file', fileInput.files[0]);
+    }
+
+    showProgressModal();
+
+    fetch('/submit-data', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        $('#progressModal').modal('hide');
+        if (data.success) {
+            alert('Data and file submitted successfully!');
+        } else {
+            throw new Error(data.error || 'An error occurred while processing the file.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        $('#progressModal').modal('hide');
+        alert(error.message || 'An error occurred while submitting the data and file.');
+    });
+});
+
+        fetch('/submit-data', {
+            method: 'POST',
+            body: formData
+        }).catch(error => {
+            console.error('Error:', error);
+            eventSource.close();
+            $('#progressModal').modal('hide');
+            alert('An error occurred while submitting the data and file.');
+        });
+    });
+
+
+
+project\templates\404.html
+==========================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 Not Found</title>
+</head>
+<body>
+    <h1>404 Not Found</h1>
+    <p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>
+</body>
+</html>
+
+
+project\templates\500.html
+==========================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>500 Internal Server Error</title>
+</head>
+<body>
+    <h1>500 Internal Server Error</h1>
+    <p>The server encountered an internal error and was unable to complete your request. Either the server is overloaded or there is an error in the application.</p>
+</body>
+</html>
+
+
+project\templates\base.html
+===========================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Client App{% endblock %}</title>
+    
+    <!-- 
+    OFFLINE USE NOTICE
+    This application is configured for offline use.
+    All resources (CSS, JavaScript) are stored locally in the project's static directory.
+    -->
+    
+    <!-- Local Bootstrap CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    
+    <!-- Local jQuery -->
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    
+    <!-- Local Bootstrap JS Bundle -->
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    
+    <!-- Additional head content can be added in child templates -->
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- Classification bar -->
+    <div class="bg-primary text-white p-2 text-center w-100"><strong>Classification Bar</strong></div>
+
+    <!-- Notice bar -->
+    <div class="bg-danger text-white p-2 text-center w-100" style="font-weight: bold; height: 40px; line-height: 40px; display: flex; align-items: center; justify-content: center;">Notice Bar: User Notices Here</div>
+
+    <div class="container mt-4">
+        <!-- Main content block to be filled by child templates -->
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Additional scripts can be added in child templates -->
+    {% block scripts %}{% endblock %}
+    
+    <!-- 
+    OFFLINE USE REMINDER
+    Ensure all required scripts and resources are included in the project's static directory.
+    Update paths if the project structure changes.
+    -->
+</body>
+</html>
+
+
+project\templates\home.html
+===========================
+{% extends "base.html" %}
+
+{% block title %}Data Ingestion Client Panel{% endblock %}
+
+{% block extra_head %}
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+    <!-- Review Modal -->
+    <div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmationModalLabel">Review Data Ingestion Request</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Please review your submission before proceeding:</p>
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>From Field</th>
+                                <th>From Value</th>
+                                <th class="text-center">Reviewed</th>
+                            </tr>
+                        </thead>
+                        <tbody id="confirmationTableBody">
+                            <!-- Rows will be dynamically added here by script.js -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="cancelReview">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmSubmit" disabled>Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="mt-4 mb-3 text-center">Data Ingestion Client Panel</h2>
+    <div class="card shadow-lg">
+        <div class="card-body">
+            <form id="dataIngestionForm">
+                <!-- Select a file -->
+                <div class="mb-3">
+                    <label for="selectFile" class="form-label">Select a file</label>
+                    <input type="file" class="form-control" id="selectFile" name="file">
+                    <small id="fileSizeMessage" class="form-text"></small>
+                </div>
+
+                <!-- Pre-fill -->
+                <div class="mb-3 text-center">
+                    <button type="button" class="btn btn-secondary" id="preFill">Pre-fill</button>
+                </div>
+
+                <!-- Operation -->
+                <div class="mb-3">
+                    <label for="operation" class="form-label">Operation</label>
+                    <input type="text" class="form-control" id="operation" name="operation">
+                </div>
+
+                <!-- File Information Section -->
+                <div class="mb-3">
+                    <h5>File Information</h5>
+                    <div class="row">
+                        <div class="col">
+                            <label for="fileSelectCheck" class="form-label">Select</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="" id="fileSelectCheck" checked>
+                                <label class="form-check-label" for="fileSelectCheck">Select</label>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <label for="fileName" class="form-label">File Name</label>
+                            <input type="text" class="form-control" id="fileName" name="file_name" placeholder="File name" readonly>
+                            <small id="fileSize" class="form-text"></small>
+                        </div>
+                        <div class="col">
+                            <label for="deviceType" class="form-label">Device Type</label>
+                            <select class="form-select" id="deviceType" name="device_type">
+                                <option value="mac">Mac</option>
+                                <option value="windows">Windows</option>
+                                <option value="linux">Linux</option>
+                            </select>
+                        </div>
+                        <div class="col">
+                            <label for="serialNumber" class="form-label">Serial No</label>
+                            <input type="text" class="form-control" id="serialNumber" name="serial_number" placeholder="Serial No">
+                        </div>
+                        <div class="col">
+                            <label for="itemNumber" class="form-label">Item No</label>
+                            <input type="text" class="form-control" id="itemNumber" name="item_number" value="001">
+                        </div>
+                        <div class="col">
+                            <label for="subNumber" class="form-label">Sub No</label>
+                            <input type="text" class="form-control" id="subNumber" name="sub_number" value="1">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collection -->
+                <div class="mb-3">
+                    <label for="collection" class="form-label">Collection</label>
+                    <select class="form-select" id="collection" name="collection">
+                        <option value="red">Red</option>
+                        <option value="blue">Blue</option>
+                        <option value="green">Green</option>
+                    </select>
+                </div>
+
+                <!-- Platform -->
+                <div class="mb-3">
+                    <label for="platform" class="form-label">Platform</label>
+                    <select class="form-select" id="platform" name="platform">
+                        <option value="red">Red</option>
+                        <option value="blue">Blue</option>
+                        <option value="green">Green</option>
+                    </select>
+                </div>
+
+                <!-- Date of Collection -->
+                <div class="mb-3">
+                    <label for="dateOfCollection" class="form-label">Date of Collection</label>
+                    <input type="date" class="form-control" id="dateOfCollection" name="date_of_collection">
+                </div>
+
+                <!-- Known Passwords -->
+                <div class="mb-3">
+                    <label for="knownPasswords" class="form-label">Known passwords (separated with comma)</label>
+                    <input type="text" class="form-control" id="knownPasswords" name="known_passwords">
+                </div>
+
+                <!-- Notes -->
+                <div class="mb-3">
+                    <label for="notes" class="form-label">Notes</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="2"></textarea>
+                </div>
+
+                <!-- Rename File and Manual Processing Section -->
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="" id="renameFileCheck">
+                        <label class="form-check-label" for="renameFileCheck">Rename file</label>
+                    </div>
+                    <input type="text" class="form-control mt-2" id="renamePreview" value="" readonly>
+                </div>
+
+                <div class="mb-3">
+                    <label>Manual Processing</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="" id="pn03">
+                        <label class="form-check-label" for="pn03">PN03</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="" id="pn04">
+                        <label class="form-check-label" for="pn04">PN04</label>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="text-center">
+                    <button type="button" class="btn btn-primary" id="openConfirmationModal">Submit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
