@@ -147,15 +147,13 @@
                 </div>
 
                 <div class="mb-3">
-                    <label>Manual Processing</label>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="pn03">
-                        <label class="form-check-label" for="pn03">PN03</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="" id="pn04">
-                        <label class="form-check-label" for="pn04">PN04</label>
-                    </div>
+                    <label for="processingMethod" class="form-label">Processing Method</label>
+                    <select class="form-select" id="processingMethod" name="processingMethod">
+                        <option value="Normal" selected>Normal</option>
+                        <option value="MX Pipeline">MX Pipeline</option>
+                        <option value="Manual on PN03">Manual on PN03</option>
+                        <option value="Manual on PN04">Manual on PN04</option>
+                    </select>
                 </div>
 
                 <!-- Submit Button -->

@@ -1,8 +1,11 @@
-const fileSaveLocation = './tmp';  //this should be the sinbin location
+const fileSaveLocation = 'F:\\pipline_output';  // Sinbin location
 const maxFileSizeGB = 20; // Maximum file size in GB
 const systemName = "XXX"; // TODO: Replace "XXX" with your actual system name
 
 $(document).ready(function () {
+    // Set default processing method on page load
+    $('#processingMethod').val('Normal');
+
     // Prefill button logic
     $('#preFill').on('click', function () {
         $('#fileSizeMessage').text(`Maximum upload size is ${maxFileSizeGB} GB`);
@@ -16,6 +19,7 @@ $(document).ready(function () {
         $('#dateOfCollection').val(new Date().toISOString().split('T')[0]);
         $('#knownPasswords').val('password1,password2');
         $('#notes').val('Sample notes for data ingestion.');
+        $('#processingMethod').val('Normal'); // Set default processing method
     });
 
     // File input change event to update the file name field and check file size
@@ -58,7 +62,7 @@ $(document).ready(function () {
         }
     }
 
-    // Update rename preview
+    // Function to update rename preview
     function updateRenamePreview() {
         const operation = $('#operation').val().replace(/\s+/g, '_');
         const itemNumber = $('#itemNumber').val();
@@ -78,15 +82,14 @@ $(document).ready(function () {
 
         const renamePreview = `${operation}_${itemNumber}-${subNumber}_${deviceType}_${collectionDate}${fileExtension}`;
         $('#renamePreview').val(renamePreview);
+        return renamePreview;
     }
 
     // Update rename preview on changes
-    $('#operation, #itemNumber, #subNumber, #deviceType, #dateOfCollection').on('input change', function () {
-        updateRenamePreview();
-    });
+    $('#operation, #itemNumber, #subNumber, #deviceType, #dateOfCollection').on('input change', updateRenamePreview);
 
-    // Event listener for submit button
-    $('#openConfirmationModal').on('click', function () {
+     // Event listener for submit button
+     $('#openConfirmationModal').on('click', function () {
         const fileInput = document.getElementById('selectFile');
         const operation = document.getElementById('operation').value;
         const deviceType = document.getElementById('deviceType').value;
@@ -99,8 +102,10 @@ $(document).ready(function () {
         const knownPasswords = document.getElementById('knownPasswords').value;
         const notes = document.getElementById('notes').value;
         const renameFileChecked = document.getElementById('renameFileCheck').checked;
-        const pn03Checked = document.getElementById('pn03').checked;
-        const pn04Checked = document.getElementById('pn04').checked;
+        const processingMethod = document.getElementById('processingMethod').value;
+
+        // Refresh rename preview
+        const updatedRenamePreview = updateRenamePreview();
 
         let confirmationTableBody = document.getElementById('confirmationTableBody');
         confirmationTableBody.innerHTML = '';
@@ -118,8 +123,8 @@ $(document).ready(function () {
             { name: 'Known Passwords', value: knownPasswords },
             { name: 'Notes', value: notes },
             { name: 'Rename File', value: renameFileChecked ? 'Yes' : 'No' },
-            { name: 'Manual Processing PN03', value: pn03Checked ? 'Yes' : 'No' },
-            { name: 'Manual Processing PN04', value: pn04Checked ? 'Yes' : 'No' }
+            { name: 'New File Name', value: renameFileChecked ? updatedRenamePreview : 'N/A' },
+            { name: 'Processing Method', value: processingMethod }
         ];
 
         fields.forEach((field, index) => {
@@ -162,48 +167,36 @@ $(document).ready(function () {
         $('body').css('overflow', 'auto');
     });
 
-    // Ensure only one PN checkbox is checked at a time
-    $('#pn03').on('change', function () {
-        if ($(this).is(':checked')) {
-            $('#pn04').prop('checked', false);
-        }
-    });
-    $('#pn04').on('change', function () {
-        if ($(this).is(':checked')) {
-            $('#pn03').prop('checked', false);
-        }
-    });
-
     // Function to show progress modal
-function showProgressModal() {
-    const modalHtml = `
-    <div class="modal fade" id="progressModal" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="progressModalLabel">Processing File</h5>
-                </div>
-                <div class="modal-body">
-                    <div id="progressText">Processing your file. Please wait...</div>
-                    <div class="progress mt-3">
-                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+    function showProgressModal() {
+        const modalHtml = `
+        <div class="modal fade" id="progressModal" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="progressModalLabel">Processing File</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div id="progressText">Processing your file. Please wait...</div>
+                        <div class="progress mt-3">
+                            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%;" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-    `;
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
-    progressModal.show();
-}
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        const progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
+        progressModal.show();
+    }
 
-// Submit button logic
+    // Submit button logic
     $('#confirmSubmit').on('click', function () {
         const fileInput = $('#selectFile')[0];
         const originalFilename = fileInput.files.length > 0 ? fileInput.files[0].name : 'No file selected';
         const renameFileChecked = $('#renameFileCheck').is(':checked');
-        const newFilename = renameFileChecked ? $('#renamePreview').val() : originalFilename;
+        const newFilename = renameFileChecked ? updateRenamePreview() : originalFilename;
 
         const jsonData = {
             uploaded_filename: originalFilename,
@@ -220,48 +213,38 @@ function showProgressModal() {
             knownPasswords: $('#knownPasswords').val(),
             notes: $('#notes').val(),
             renameFile: renameFileChecked ? 'Yes' : 'No',
-            manualProcessingPN03: $('#pn03').is(':checked') ? 'Yes' : 'No',
-            manualProcessingPN04: $('#pn04').is(':checked') ? 'Yes' : 'No',
+            processingMethod: $('#processingMethod').val(),
             approved: 'No', // Default JSON option
-            system: systemName // Default JSON option
+            system: systemName,
+            fileSaveLocation: fileSaveLocation
         };
 
-    const formData = new FormData();
-    formData.append('json', JSON.stringify(jsonData));
-    
-    if (fileInput.files.length > 0) {
-        formData.append('file', fileInput.files[0]);
-    }
-
-    showProgressModal();
-
-    fetch('/submit-data', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        $('#progressModal').modal('hide');
-        if (data.success) {
-            alert('Data and file submitted successfully!');
-        } else {
-            throw new Error(data.error || 'An error occurred while processing the file.');
+        const formData = new FormData();
+        formData.append('json', JSON.stringify(jsonData));
+        
+        if (fileInput.files.length > 0) {
+            formData.append('file', fileInput.files[0]);
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        $('#progressModal').modal('hide');
-        alert(error.message || 'An error occurred while submitting the data and file.');
-    });
-});
+
+        showProgressModal();
 
         fetch('/submit-data', {
             method: 'POST',
             body: formData
-        }).catch(error => {
-            console.error('Error:', error);
-            eventSource.close();
+        })
+        .then(response => response.json())
+        .then(data => {
             $('#progressModal').modal('hide');
-            alert('An error occurred while submitting the data and file.');
+            if (data.success) {
+                alert('Data and file submitted successfully!');
+            } else {
+                throw new Error(data.error || 'An error occurred while processing the file.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            $('#progressModal').modal('hide');
+            alert(error.message || 'An error occurred while submitting the data and file.');
         });
     });
+});

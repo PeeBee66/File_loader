@@ -1,6 +1,6 @@
 Folder Structure:
 =================
-Pipeline/
+Client_app/
 ├── manage.py
 ├── logs/
 │   ├── pipeline.log
@@ -181,7 +181,7 @@ project\client_app\__init__.py
 
 project\static\js\script.js
 ===========================
-const fileSaveLocation = './tmp';  //this should be the sinbin location
+const fileSaveLocation = 'F:\pipline_output';  //this should be the sinbin location
 const maxFileSizeGB = 20; // Maximum file size in GB
 const systemName = "XXX"; // TODO: Replace "XXX" with your actual system name
 

@@ -1,4 +1,6 @@
-from flask import Flask, render_template
+# In project/__init__.py
+
+from flask import Flask
 import logging
 from logging.handlers import RotatingFileHandler
 import os
@@ -22,14 +24,5 @@ def create_app():
     # Register Blueprints
     from .client_app.routes import client_app
     app.register_blueprint(client_app)
-    
-    # Error handling
-    @app.errorhandler(404)
-    def not_found_error(error):
-        return render_template('404.html'), 404
-
-    @app.errorhandler(500)
-    def internal_error(error):
-        return render_template('500.html'), 500
 
     return app
