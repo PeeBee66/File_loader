@@ -1,0 +1,1056 @@
+Folder Structure:
+=================
+client-app/
+├── config.py
+├── manage.py
+├── logs/
+├── project/
+│   ├── __init__.py
+│   ├── client_app/
+│   │   ├── routes.py
+│   │   ├── __init__.py
+│   ├── static/
+│   │   ├── css/
+│   │   │   ├── custom.css
+│   │   ├── js/
+│   │   │   ├── chunked-upload.js
+│   │   │   ├── script.js
+│   │   │   ├── submit.js
+│   ├── templates/
+│   │   ├── 404.html
+│   │   ├── 500.html
+│   │   ├── base.html
+│   │   ├── home.html
+│   ├── tmp/
+├── tmp/
+
+File Contents:
+==============
+
+config.py
+=========
+import os
+
+# User-configurable settings
+UPLOAD_FOLDER = "F:\pipline_output"
+MAX_FILE_SIZE_GB = 200
+SYSTEM_NAME = "System A"
+STATIC_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+
+# Derived settings
+MAX_FILE_SIZE = MAX_FILE_SIZE_GB * 1024 * 1024 * 1024  # Convert GB to bytes
+
+class Config:
+    UPLOAD_FOLDER = UPLOAD_FOLDER
+    MAX_FILE_SIZE = MAX_FILE_SIZE
+    SYSTEM_NAME = SYSTEM_NAME
+    STATIC_FOLDER = STATIC_FOLDER
+
+class DevelopmentConfig(Config):
+    DEBUG = True
+
+class ProductionConfig(Config):
+    DEBUG = False
+
+# Configuration dictionary
+config = {
+    'development': DevelopmentConfig,
+    'production': ProductionConfig,
+    'default': DevelopmentConfig
+}
+
+# Allow overriding settings with environment variables
+for key in ['UPLOAD_FOLDER', 'MAX_FILE_SIZE', 'SYSTEM_NAME', 'STATIC_FOLDER']:
+    if os.environ.get(key):
+        setattr(Config, key, os.environ.get(key))
+        if key == 'MAX_FILE_SIZE':
+            Config.MAX_FILE_SIZE = int(Config.MAX_FILE_SIZE)
+
+
+manage.py
+=========
+from project import create_app
+
+app = create_app()
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
+
+project\__init__.py
+===================
+from flask import Flask, jsonify, send_from_directory
+from werkzeug.exceptions import HTTPException
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+from config import Config, config
+
+def create_app(config_name='default'):
+    app = Flask(__name__)
+    
+    # Load the configuration
+    app.config.from_object(Config)
+    app.config.from_object(config[config_name])
+    
+    # Configure logging
+    if not app.debug:
+        if not os.path.exists('logs'):
+            os.mkdir('logs')
+        file_handler = RotatingFileHandler('logs/pipeline.log', maxBytes=10240, backupCount=10)
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        ))
+        file_handler.setLevel(logging.INFO)
+        app.logger.addHandler(file_handler)
+        app.logger.setLevel(logging.INFO)
+        app.logger.info('Pipeline startup')
+
+    # Register Blueprints
+    from .client_app.routes import client_app
+    app.register_blueprint(client_app)
+
+    # Custom static data
+    @app.route('/static/<path:filename>')
+    def custom_static(filename):
+        return send_from_directory(app.config['STATIC_FOLDER'], filename)
+
+    # Global error handler
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        # Pass through HTTP errors
+        if isinstance(e, HTTPException):
+            return e
+
+        # Now you're handling non-HTTP exceptions only
+        app.logger.error(f'Unhandled exception: {str(e)}', exc_info=True)
+        return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
+
+    return app
+
+
+project\client_app\routes.py
+============================
+# routes.py
+
+from flask import Blueprint, render_template, request, jsonify, current_app, abort
+from werkzeug.utils import secure_filename
+import os
+import json
+import traceback
+import shutil
+
+client_app = Blueprint('client_app', __name__, template_folder='../templates')
+
+@client_app.route('/')
+@client_app.route('/home')
+def home():
+    current_app.logger.info("Accessed home route")
+    return render_template('home.html')
+
+# routes.py
+
+from flask import Blueprint, render_template, request, jsonify, current_app, abort
+from werkzeug.utils import secure_filename
+import os
+import json
+import traceback
+import shutil
+
+client_app = Blueprint('client_app', __name__, template_folder='../templates')
+
+@client_app.route('/')
+@client_app.route('/home')
+def home():
+    current_app.logger.info("Accessed home route")
+    return render_template('home.html')
+
+@client_app.route('/upload-chunk', methods=['POST'])
+def upload_chunk():
+    try:
+        current_app.logger.info("Received chunk upload request")
+        file = request.files['file']
+        chunk = int(request.form['chunk'])
+        total_chunks = int(request.form['totalChunks'])
+        chunk_size = int(request.form.get('chunkSize', 0))  # Get chunkSize with a default of 0
+        filename = secure_filename(file.filename)
+
+        current_app.logger.info(f"Processing chunk {chunk+1}/{total_chunks} for file {filename}")
+
+        base_upload_folder = current_app.config.get('UPLOAD_FOLDER')
+        if not base_upload_folder:
+            raise ValueError("UPLOAD_FOLDER not set in configuration")
+        
+        current_app.logger.info(f"Using base upload folder: {base_upload_folder}")
+
+        if chunk == 0:
+            metadata = json.loads(request.form['metadata'])
+            current_app.logger.info(f"Received metadata: {metadata}")
+            folder_name = metadata.get('folder_name', os.path.splitext(filename)[0])
+            upload_folder = os.path.join(base_upload_folder, folder_name)
+            os.makedirs(upload_folder, exist_ok=True)
+            current_app.logger.info(f"Created folder: {upload_folder}")
+
+            metadata['upload_folder'] = upload_folder
+            metadata_path = os.path.join(upload_folder, f"{filename}_metadata.json")
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=4)
+            current_app.logger.info(f"Metadata saved to: {metadata_path}")
+        else:
+            metadata_filename = f"{filename}_metadata.json"
+            for root, dirs, files in os.walk(base_upload_folder):
+                if metadata_filename in files:
+                    with open(os.path.join(root, metadata_filename), 'r') as f:
+                        metadata = json.load(f)
+                    upload_folder = metadata['upload_folder']
+                    current_app.logger.info(f"Found existing metadata file: {os.path.join(root, metadata_filename)}")
+                    break
+            else:
+                raise ValueError(f"Metadata file not found for {filename}")
+
+        filepath = os.path.join(upload_folder, filename)
+        current_app.logger.info(f"Saving chunk to: {filepath}")
+        
+        with open(filepath, 'ab') as f:
+            if chunk_size > 0:
+                f.seek(chunk * chunk_size)
+            file_chunk = file.read()
+            f.write(file_chunk)
+
+        if chunk == total_chunks - 1:
+            current_app.logger.info(f"File upload completed: {filename}")
+            return jsonify({'status': 'File upload completed'})
+        else:
+            return jsonify({'status': 'Chunk received'})
+
+    except Exception as e:
+        current_app.logger.error(f"Error in upload_chunk: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+@client_app.route('/complete-upload', methods=['POST'])
+def complete_upload():
+    try:
+        current_app.logger.info("Received complete upload request")
+        data = request.json
+        current_app.logger.info(f"Request data: {data}")
+        
+        if not data:
+            raise ValueError("No JSON data received")
+        
+        filename = secure_filename(data.get('filename'))
+        metadata = data.get('metadata')
+        
+        if not filename or not metadata:
+            raise ValueError(f"Missing required data. Filename: {filename}, Metadata: {metadata}")
+        
+        current_app.logger.info(f"Filename: {filename}, Metadata: {metadata}")
+        
+        base_upload_folder = current_app.config.get('UPLOAD_FOLDER')
+        if not base_upload_folder:
+            raise ValueError("UPLOAD_FOLDER not set in configuration")
+        
+        current_app.logger.info(f"Base upload folder: {base_upload_folder}")
+        
+        folder_name = metadata.get('folder_name')
+        upload_folder = os.path.join(base_upload_folder, folder_name)
+        
+        if not os.path.exists(upload_folder):
+            raise FileNotFoundError(f"Upload folder not found: {upload_folder}")
+
+        current_app.logger.info(f"Upload folder found: {upload_folder}")
+
+        original_filepath = os.path.join(upload_folder, filename)
+        final_filename = filename
+        
+        if metadata.get('rename_file') and metadata.get('new_filename'):
+            new_filename = secure_filename(metadata['new_filename'])
+            new_filepath = os.path.join(upload_folder, new_filename)
+            
+            if os.path.exists(original_filepath):
+                current_app.logger.info(f"Attempting to rename file from {filename} to {new_filename}")
+                try:
+                    os.rename(original_filepath, new_filepath)
+                    current_app.logger.info(f"File successfully renamed from {filename} to {new_filename}")
+                    final_filename = new_filename
+                except Exception as e:
+                    current_app.logger.error(f"Error renaming file: {str(e)}")
+                    current_app.logger.info(f"File will remain as: {filename}")
+            elif os.path.exists(new_filepath):
+                current_app.logger.info(f"File already renamed to {new_filename}")
+                final_filename = new_filename
+            else:
+                raise FileNotFoundError(f"Neither original file nor renamed file found: {original_filepath} or {new_filepath}")
+        else:
+            if not os.path.exists(original_filepath):
+                raise FileNotFoundError(f"Original file not found: {original_filepath}")
+        
+        current_app.logger.info(f"File exists: {os.path.join(upload_folder, final_filename)}")
+        
+        # Update metadata
+        old_metadata_filename = f"{filename}_metadata.json"
+        new_metadata_filename = f"{final_filename}_metadata.json"
+        old_metadata_path = os.path.join(upload_folder, old_metadata_filename)
+        new_metadata_path = os.path.join(upload_folder, new_metadata_filename)
+        
+        try:
+            if os.path.exists(old_metadata_path):
+                with open(old_metadata_path, 'r') as f:
+                    metadata_content = json.load(f)
+            else:
+                metadata_content = metadata
+            
+            metadata_content['new_filename'] = final_filename
+            
+            with open(new_metadata_path, 'w') as f:
+                json.dump(metadata_content, f, indent=4)
+            
+            current_app.logger.info(f"Metadata updated and saved to: {new_metadata_path}")
+            
+            # Remove old metadata file if it's different from the new one
+            if old_metadata_path != new_metadata_path and os.path.exists(old_metadata_path):
+                try:
+                    os.remove(old_metadata_path)
+                    current_app.logger.info(f"Old metadata file removed: {old_metadata_path}")
+                except Exception as e:
+                    current_app.logger.warning(f"Could not remove old metadata file: {str(e)}")
+        except Exception as e:
+            current_app.logger.error(f"Error updating metadata: {str(e)}")
+
+        final_filepath = os.path.join(upload_folder, final_filename)
+        current_app.logger.info(f"Upload and processing completed for file: {final_filepath}")
+
+        return jsonify({
+            'status': 'Upload completed',
+            'file': final_filename,
+            'upload_folder': upload_folder,
+            'full_path': final_filepath,
+            'renamed': final_filename != filename
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"Error in complete_upload: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+    
+@client_app.route('/config')
+def get_config():
+    config = {
+        'UPLOAD_FOLDER': current_app.config.get('UPLOAD_FOLDER', '/tmp/uploads'),
+        'MAX_FILE_SIZE': current_app.config.get('MAX_FILE_SIZE', 200 * 1024 * 1024 * 1024),
+        'SYSTEM_NAME': current_app.config.get('SYSTEM_NAME', 'Unknown')
+    }
+    current_app.logger.info(f"Config requested: {config}")
+    return jsonify(config)
+
+@client_app.errorhandler(404)
+def not_found_error(error):
+    if request.path.startswith('/static/'):
+        return "File not found", 404
+    return render_template('404.html'), 404
+
+@client_app.errorhandler(500)
+def internal_error(error):
+    current_app.logger.error(f"500 error: {str(error)}")
+    current_app.logger.error(traceback.format_exc())
+    return jsonify({'error': 'Internal server error', 'message': str(error), 'traceback': traceback.format_exc()}), 500
+
+
+project\client_app\__init__.py
+==============================
+
+
+
+project\static\css\custom.css
+=============================
+/* custom.css */
+
+.modal-dialog {
+    max-width: 80%; /* Increase modal width */
+    width: 800px; /* Set a fixed width */
+}
+
+.modal-body {
+    max-height: 70vh; /* Set maximum height */
+    overflow-y: auto; /* Allow vertical scrolling if content exceeds max-height */
+}
+
+.confirmation-table {
+    width: 100%;
+    font-size: 0.9rem; /* Reduce font size slightly */
+}
+
+.confirmation-table th {
+    white-space: nowrap;
+    padding: 8px 4px;
+}
+.confirmation-table td {
+    max-width: 200px; /* Set maximum width for cells */
+    overflow-wrap: break-word; /* Allow long words to break and wrap */
+    word-wrap: break-word; /* For older browsers */
+    word-break: break-word; /* Allow breaking of non-English words */
+}
+
+.confirmation-table .from-value {
+    max-width: 300px; /* Give more space for the 'From Value' column */
+}
+
+.confirmation-table .reviewed-column {
+    width: 90px; /* Set a fixed width for the 'Reviewed' column */
+    text-align: center;
+}
+
+
+project\static\js\chunked-upload.js
+===================================
+// chunked-upload.js
+
+const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+
+async function uploadFile(file, metadata, progressCallback) {
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    let uploadedChunks = 0;
+
+    for (let start = 0; start < file.size; start += CHUNK_SIZE) {
+        const chunk = file.slice(start, start + CHUNK_SIZE);
+        const formData = new FormData();
+        formData.append('file', chunk, file.name);
+        formData.append('chunk', uploadedChunks);
+        formData.append('totalChunks', totalChunks);
+        formData.append('chunkSize', CHUNK_SIZE);
+        
+        if (uploadedChunks === 0) {
+            formData.append('metadata', JSON.stringify(metadata));
+        }
+
+        try {
+            const response = await fetch('/upload-chunk', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const responseText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, body: ${responseText}`);
+            }
+
+            const result = await response.json();
+            console.log('Chunk upload result:', result);
+
+            uploadedChunks++;
+            const progress = (uploadedChunks / totalChunks) * 100;
+            progressCallback(progress);
+        } catch (error) {
+            console.error('Error during chunk upload:', error);
+            throw error;
+        }
+    }
+
+    // All chunks uploaded, now complete the upload
+    try {
+        const response = await fetch('/complete-upload', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ filename: file.name, metadata: metadata })
+        });
+
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, body: ${responseText}`);
+        }
+
+        const result = await response.json();
+        console.log('Upload completion result:', result);
+        return result;
+    } catch (error) {
+        console.error('Error during upload completion:', error);
+        throw error;
+    }
+}
+
+
+project\static\js\script.js
+===========================
+// script.js
+
+let fileSaveLocation;
+let maxFileSizeGB;
+let systemName;
+
+// Fetch configuration from the server
+fetch('/config')
+    .then(response => response.json())
+    .then(config => {
+        fileSaveLocation = config.UPLOAD_FOLDER;
+        maxFileSizeGB = config.MAX_FILE_SIZE / (1024 * 1024 * 1024); // Convert bytes to GB
+        systemName = config.SYSTEM_NAME;
+        $('#fileSizeMessage').text(`Maximum upload size is ${maxFileSizeGB} GB`);
+    })
+    .catch(error => console.error('Error fetching config:', error));
+
+$(document).ready(function () {
+    // Set default processing method on page load
+    $('#processingMethod').val('Normal');
+
+    // Prefill button logic
+    $('#preFill').on('click', function () {
+        $('#operation').val('Sample Operation');
+        $('#deviceType').val('unknown');
+        $('#serialNumber').val('12345');
+        $('#itemNumber').val('001');
+        $('#subNumber').val('1');
+        $('#collection').val('unknown');
+        $('#platform').val('unknown');
+        $('#dateOfCollection').val(new Date().toISOString().split('T')[0]);
+        $('#knownPasswords').val('password1,password2');
+        $('#notes').val('Sample notes for data ingestion.');
+        $('#processingMethod').val('Normal');
+        updateRenamePreview();
+    });
+
+    // File input change event to update the file name field and check file size
+    $('#selectFile').on('change', function () {
+        const fileInput = $(this)[0];
+        if (fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            $('#fileName').val(file.name);
+            $('#fileSize').text(formatFileSize(file.size));
+            updateRenamePreview();
+            checkFileSize(file);
+        } else {
+            $('#fileName').val('');
+            $('#fileSize').text('');
+            $('#fileSizeMessage').text(`Maximum upload size is ${maxFileSizeGB} GB`).removeClass('text-danger');
+        }
+    });
+
+    // Update rename preview on changes
+    $('#operation, #itemNumber, #subNumber, #deviceType, #dateOfCollection').on('input change', updateRenamePreview);
+
+    // Rename file checkbox logic
+    $('#renameFileCheck').on('change', updateRenamePreview);
+});
+
+// Function to format file size
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Function to check file size and display message
+function checkFileSize(file) {
+    const fileSizeInGB = file.size / (1024 * 1024 * 1024);
+    const fileSizeMessage = $('#fileSizeMessage');
+    
+    if (fileSizeInGB > maxFileSizeGB) {
+        fileSizeMessage.text(`File is too large. Maximum size is ${maxFileSizeGB} GB. Your file is ${fileSizeInGB.toFixed(2)} GB.`).addClass('text-danger');
+        $('#selectFile').val(''); // Clear the file input
+        $('#fileName').val(''); // Clear the file name field
+        $('#fileSize').text(''); // Clear the file size
+    } else {
+        fileSizeMessage.text(`File size: ${formatFileSize(file.size)} (Max: ${maxFileSizeGB} GB)`).removeClass('text-danger');
+    }
+}
+
+// Function to update rename preview
+function updateRenamePreview() {
+    const operation = $('#operation').val().replace(/\s+/g, '_');
+    const itemNumber = $('#itemNumber').val();
+    const subNumber = $('#subNumber').val();
+    const deviceType = $('#deviceType').val();
+    const collectionDate = $('#dateOfCollection').val();
+    const fileInput = $('#selectFile')[0];
+    let fileExtension = '';
+
+    if (fileInput.files.length > 0) {
+        const fileName = fileInput.files[0].name;
+        const lastDotIndex = fileName.lastIndexOf('.');
+        if (lastDotIndex !== -1) {
+            fileExtension = fileName.substring(lastDotIndex);
+        }
+    }
+
+    const renamePreview = `${operation}_${itemNumber}-${subNumber}_${deviceType}_${collectionDate}${fileExtension}`;
+    $('#renamePreview').val(renamePreview);
+    return renamePreview;
+}
+
+
+project\static\js\submit.js
+===========================
+// submit.js
+
+$(document).ready(function () {
+    // Event listener for open confirmation modal button
+    $('#openConfirmationModal').on('click', function () {
+        updateRenamePreview();
+        populateConfirmationModal();
+    });
+
+    // Function to populate the confirmation modal
+    function populateConfirmationModal() {
+        const fileInput = document.getElementById('selectFile');
+        const fields = [
+            { name: 'File', value: fileInput.files.length > 0 ? `${fileInput.files[0].name} (${formatFileSize(fileInput.files[0].size)})` : 'No file selected' },
+            { name: 'Operation', value: $('#operation').val() },
+            { name: 'Device Type', value: $('#deviceType').val() },
+            { name: 'Serial Number', value: $('#serialNumber').val() },
+            { name: 'Item Number', value: $('#itemNumber').val() },
+            { name: 'Sub Number', value: $('#subNumber').val() },
+            { name: 'Collection', value: $('#collection').val() },
+            { name: 'Platform', value: $('#platform').val() },
+            { name: 'Date of Collection', value: $('#dateOfCollection').val() },
+            { name: 'Known Passwords', value: $('#knownPasswords').val() },
+            { name: 'Notes', value: $('#notes').val() },
+            { name: 'Rename File', value: $('#renameFileCheck').is(':checked') ? 'Yes' : 'No' },
+            { name: 'New File Name', value: $('#renamePreview').val() },
+            { name: 'Processing Method', value: $('#processingMethod').val() }
+        ];
+
+        let confirmationTableBody = $('#confirmationTableBody');
+        confirmationTableBody.empty();
+
+        fields.forEach((field, index) => {
+            let row = `<tr>
+                <td>${field.name}</td>
+                <td class="from-value">${field.value}</td>
+                <td class="reviewed-column">
+                    <input type='checkbox' class='review-checkbox' data-index='${index}'>
+                </td>
+            </tr>`;
+            confirmationTableBody.append(row);
+        });
+
+        // Reset submit button state
+        $('#confirmSubmit').prop('disabled', true);
+
+        // Add event listeners to checkboxes
+        $('.review-checkbox').on('change', updateSubmitButtonState);
+
+        $('#confirmationModal').modal('show');
+    }
+
+    // Function to update submit button state
+    function updateSubmitButtonState() {
+        const allChecked = $('.review-checkbox:checked').length === $('.review-checkbox').length;
+        $('#confirmSubmit').prop('disabled', !allChecked);
+    }
+
+    // Submit button logic
+    $('#confirmSubmit').on('click', async function () {
+        const fileInput = $('#selectFile')[0];
+        const file = fileInput.files[0];
+        const renameFileChecked = $('#renameFileCheck').is(':checked');
+        const newFilename = renameFileChecked ? $('#renamePreview').val() : file.name;
+        const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+        const folderName = `${$('#renamePreview').val().split('.')[0]}_${currentTime.replace(':', '')}`;
+
+        const metadata = {
+            original_filename: file.name,
+            new_filename: renameFileChecked ? newFilename : "",
+            rename_file: renameFileChecked,
+            operation: $('#operation').val(),
+            deviceType: $('#deviceType').val(),
+            serialNumber: $('#serialNumber').val(),
+            itemNumber: $('#itemNumber').val(),
+            subNumber: $('#subNumber').val(),
+            collection: $('#collection').val(),
+            platform: $('#platform').val(),
+            dateOfCollection: $('#dateOfCollection').val(),
+            knownPasswords: $('#knownPasswords').val(),
+            notes: $('#notes').val(),
+            processingMethod: $('#processingMethod').val(),
+            approved: 'No',
+            system: systemName,
+            folder_name: folderName
+        };
+
+        try {
+            $('#confirmationModal').modal('hide');
+            showProgressModal();
+            console.log('Starting file upload with metadata:', metadata);
+            const result = await uploadFile(file, metadata, updateProgress);
+            $('#progressModal').modal('hide');
+            console.log('Upload result:', result);
+            
+            let successMessage = `File uploaded successfully!`;
+            if (result.renamed) {
+                successMessage += ` The file was renamed to "${result.file}".`;
+            }
+            successMessage += `\nFull path: ${result.full_path}`;
+            
+            alert(successMessage);
+        } catch (error) {
+            console.error('Error details:', error);
+            $('#progressModal').modal('hide');
+            let errorMessage = 'An error occurred while uploading the file.';
+            if (error.message) {
+                errorMessage += ' Error message: ' + error.message;
+            }
+            if (error.response) {
+                try {
+                    const errorBody = await error.response.text();
+                    console.error('Error response body:', errorBody);
+                    const errorJson = JSON.parse(errorBody);
+                    if (errorJson.error) {
+                        errorMessage += ' Server error: ' + errorJson.error;
+                    }
+                    if (errorJson.traceback) {
+                        console.error('Server traceback:', errorJson.traceback);
+                    }
+                } catch (e) {
+                    console.error('Could not parse error response:', e);
+                }
+            }
+            alert(errorMessage);
+        }
+    });
+
+    // Function to show progress modal
+    function showProgressModal() {
+        $('#progressBar').css('width', '0%').attr('aria-valuenow', 0);
+        $('#progressText').text('Uploading... 0%');
+        $('#progressModal').modal('show');
+    }
+
+    // Function to update progress
+    function updateProgress(progress) {
+        $('#progressBar').css('width', `${progress}%`).attr('aria-valuenow', progress);
+        $('#progressText').text(`Uploading... ${Math.round(progress)}%`);
+    }
+
+    // Helper function to format file size
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Cancel review button logic
+    $('#cancelReview').on('click', function () {
+        $('#confirmationModal').modal('hide');
+    });
+
+    // Secret sequence to check all boxes
+    let secretSequence = '';
+    $(document).on('keypress', function(e) {
+        secretSequence += String.fromCharCode(e.which);
+        if (secretSequence.endsWith('xxx')) {
+            $('.review-checkbox').prop('checked', true);
+            updateSubmitButtonState();
+            secretSequence = '';
+        }
+        if (secretSequence.length > 10) secretSequence = '';
+    });
+
+    // Function to update rename preview
+    function updateRenamePreview() {
+        const operation = $('#operation').val().replace(/\s+/g, '_');
+        const itemNumber = $('#itemNumber').val();
+        const subNumber = $('#subNumber').val();
+        const deviceType = $('#deviceType').val();
+        const collectionDate = $('#dateOfCollection').val();
+        const fileInput = $('#selectFile')[0];
+        let fileExtension = '';
+
+        if (fileInput.files.length > 0) {
+            const fileName = fileInput.files[0].name;
+            const lastDotIndex = fileName.lastIndexOf('.');
+            if (lastDotIndex !== -1) {
+                fileExtension = fileName.substring(lastDotIndex);
+            }
+        }
+
+        const renamePreview = `${operation}_${itemNumber}-${subNumber}_${deviceType}_${collectionDate}${fileExtension}`;
+        $('#renamePreview').val(renamePreview);
+    }
+
+    // Update rename preview on changes
+    $('#operation, #itemNumber, #subNumber, #deviceType, #dateOfCollection, #selectFile').on('input change', updateRenamePreview);
+
+    // Rename file checkbox logic
+    $('#renameFileCheck').on('change', updateRenamePreview);
+});
+
+
+project\templates\404.html
+==========================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 Not Found</title>
+</head>
+<body>
+    <h1>404 Not Found</h1>
+    <p>The requested page could not be found. Please check the URL and try again.</p>
+    <a href="{{ url_for('client_app.home') }}">Return to Home</a>
+</body>
+</html>
+
+
+project\templates\500.html
+==========================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>500 Internal Server Error</title>
+</head>
+<body>
+    <h1>500 Internal Server Error</h1>
+    <p>The server encountered an internal error and was unable to complete your request. Either the server is overloaded or there is an error in the application.</p>
+</body>
+</html>
+
+
+project\templates\base.html
+===========================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Client App{% endblock %}</title>
+    
+    <!-- Local Bootstrap CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    
+    <!-- Additional head content can be added in child templates -->
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- Classification bar -->
+    <div class="bg-primary text-white p-2 text-center w-100"><strong>Classification Bar</strong></div>
+
+    <!-- Notice bar -->
+    <div class="bg-danger text-white p-2 text-center w-100" style="font-weight: bold; height: 40px; line-height: 40px; display: flex; align-items: center; justify-content: center;">Notice Bar: User Notices Here</div>
+
+    <div class="container mt-4">
+        <!-- Main content block to be filled by child templates -->
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Local jQuery -->
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    
+    <!-- Local Bootstrap JS Bundle -->
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/submit.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chunked-upload.js') }}"></script>
+
+    <!-- Additional scripts can be added in child templates -->
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+
+
+project\templates\home.html
+===========================
+{% extends "base.html" %}
+
+{% block title %}Data Ingestion Client Panel{% endblock %}
+
+{% block content %}
+    <!-- Review Modal -->
+    <div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmationModalLabel">Review Data Ingestion Request</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Please review your submission before proceeding:</p>
+                    <div class="table-responsive">
+                        <table class="table table-bordered confirmation-table">
+                            <thead>
+                                <tr>
+                                    <th>From Field</th>
+                                    <th class="from-value">From Value</th>
+                                    <th class="reviewed-column">Reviewed</th>
+                                </tr>
+                            </thead>
+                            <tbody id="confirmationTableBody">
+                                <!-- Rows will be dynamically added here by script.js -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="cancelReview">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmSubmit" disabled>Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Modal -->
+    <div class="modal fade" id="progressModal" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="progressModalLabel">Upload Progress</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="progress">
+                        <div id="progressBar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <p id="progressText" class="mt-2">Uploading... 0%</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="mt-4 mb-3 text-center">Data Ingestion Client Panel</h2>
+    <div class="card shadow-lg">
+        <div class="card-body">
+            <form id="dataIngestionForm">
+                <!-- Select a file -->
+                <div class="mb-3">
+                    <label for="selectFile" class="form-label">Select a file</label>
+                    <input type="file" class="form-control" id="selectFile" name="file">
+                    <small id="fileSizeMessage" class="form-text"></small>
+                </div>
+
+                <!-- Pre-fill -->
+                <div class="mb-3 text-center">
+                    <button type="button" class="btn btn-secondary" id="preFill">Pre-fill</button>
+                </div>
+
+                <!-- Operation -->
+                <div class="mb-3">
+                    <label for="operation" class="form-label">Operation</label>
+                    <input type="text" class="form-control" id="operation" name="operation">
+                </div>
+
+                <!-- File Information Section -->
+                <div class="mb-3">
+                    <h5>File Information</h5>
+                    <div class="row">
+                        <div class="col">
+                            <label for="fileSelectCheck" class="form-label">Select</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="" id="fileSelectCheck" checked>
+                                <label class="form-check-label" for="fileSelectCheck">Select</label>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <label for="fileName" class="form-label">File Name</label>
+                            <input type="text" class="form-control" id="fileName" name="file_name" placeholder="File name" readonly>
+                            <small id="fileSize" class="form-text"></small>
+                        </div>
+                        <div class="col">
+                            <label for="deviceType" class="form-label">Device Type</label>
+                            <select class="form-select" id="deviceType" name="device_type">
+                                <option value="laptop">Laptop</option>
+                                <option value="phone">Phone</option>
+                                <option value="other">Other</option>
+                                <option value="unknown">Unknown</option>
+                            </select>
+                        </div>
+                        <div class="col">
+                            <label for="serialNumber" class="form-label">Serial No</label>
+                            <input type="text" class="form-control" id="serialNumber" name="serial_number" placeholder="Serial No">
+                        </div>
+                        <div class="col">
+                            <label for="itemNumber" class="form-label">Item No</label>
+                            <input type="text" class="form-control" id="itemNumber" name="item_number" value="001">
+                        </div>
+                        <div class="col">
+                            <label for="subNumber" class="form-label">Sub No</label>
+                            <input type="text" class="form-control" id="subNumber" name="sub_number" value="1">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collection -->
+                <div class="mb-3">
+                    <label for="collection" class="form-label">Collection</label>
+                    <select class="form-select" id="collection" name="collection">
+                        <option value="red">Red</option>
+                        <option value="blue">Blue</option>
+                        <option value="green">Green</option>
+                        <option value="unknown">Unknown</option>
+                    </select>
+                </div>
+
+                <!-- Platform -->
+                <div class="mb-3">
+                    <label for="platform" class="form-label">Platform</label>
+                    <select class="form-select" id="platform" name="platform">
+                        <option value="red">Windows</option>
+                        <option value="blue">MacOS</option>
+                        <option value="unknown">Unknown</option>
+                    </select>
+                </div>
+
+                <!-- Date of Collection -->
+                <div class="mb-3">
+                    <label for="dateOfCollection" class="form-label">Date of Collection</label>
+                    <input type="date" class="form-control" id="dateOfCollection" name="date_of_collection">
+                </div>
+
+                <!-- Known Passwords -->
+                <div class="mb-3">
+                    <label for="knownPasswords" class="form-label">Known passwords (separated with comma)</label>
+                    <input type="text" class="form-control" id="knownPasswords" name="known_passwords">
+                </div>
+
+                <!-- Notes -->
+                <div class="mb-3">
+                    <label for="notes" class="form-label">Notes</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="2"></textarea>
+                </div>
+
+                <!-- Rename File and Manual Processing Section -->
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="" id="renameFileCheck">
+                        <label class="form-check-label" for="renameFileCheck">Rename file</label>
+                    </div>
+                    <label for="renamePreview" class="form-label mt-2">File Name Preview</label>
+                    <input type="text" class="form-control" id="renamePreview" value="" readonly>
+                </div>
+
+                <div class="mb-3">
+                    <label for="processingMethod" class="form-label">Processing Method</label>
+                    <select class="form-select" id="processingMethod" name="processingMethod">
+                        <option value="Normal" selected>Normal</option>
+                        <option value="MX Pipeline">MX Pipeline</option>
+                        <option value="Manual on PN03">Manual on PN03</option>
+                        <option value="Manual on PN04">Manual on PN04</option>
+                    </select>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="text-center">
+                    <button type="button" class="btn btn-primary" id="openConfirmationModal">Submit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/submit.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chunked-upload.js') }}"></script>
+{% endblock %}
+
