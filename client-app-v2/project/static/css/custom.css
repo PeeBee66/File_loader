@@ -1,0 +1,36 @@
+/* custom.css */
+
+.modal-dialog {
+    max-width: 80%; /* Increase modal width */
+    width: 800px; /* Set a fixed width */
+}
+
+.modal-body {
+    max-height: 70vh; /* Set maximum height */
+    overflow-y: auto; /* Allow vertical scrolling if content exceeds max-height */
+}
+
+.confirmation-table {
+    width: 100%;
+    font-size: 0.9rem; /* Reduce font size slightly */
+}
+
+.confirmation-table th {
+    white-space: nowrap;
+    padding: 8px 4px;
+}
+.confirmation-table td {
+    max-width: 200px; /* Set maximum width for cells */
+    overflow-wrap: break-word; /* Allow long words to break and wrap */
+    word-wrap: break-word; /* For older browsers */
+    word-break: break-word; /* Allow breaking of non-English words */
+}
+
+.confirmation-table .from-value {
+    max-width: 300px; /* Give more space for the 'From Value' column */
+}
+
+.confirmation-table .reviewed-column {
+    width: 90px; /* Set a fixed width for the 'Reviewed' column */
+    text-align: center;
+}
