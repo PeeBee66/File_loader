@@ -1,54 +1,193 @@
-# Flask Backup and Restore Project
+# Data Ingestion Portal
 
-This project provides a comprehensive backup and restore solution for Flask applications, designed to handle file operations, error handling, and data processing efficiently.
+A comprehensive web application for managing and processing data ingestion operations with separate client and admin interfaces.
 
-## Features
+## Overview
 
-- **Backup and Restore**: Efficient tools for backing up and restoring files within the Flask application.
-- **Error Handling**: Custom error handlers for streamlined debugging and issue management.
-- **Chunked File Uploads**: Support for large file uploads by handling data in chunks.
-- **Metadata Management**: Tracking and logging of metadata throughout the data pipeline.
+This application consists of two main components:
+- **Client Portal**: For uploading and processing data files
+- **Admin Portal**: For managing and monitoring uploaded data
 
-## Folder Structure
+### Client Portal Features
 
-The project is organised as follows:
+- Large file upload support with chunking (up to 200GB)
+- Real-time upload progress tracking
+- File integrity verification through MD5 hashing
+- Metadata collection for uploads
+- Customizable file renaming
+- Upload history tracking
+- Support for various device types and platforms
+- Secure file handling and processing
 
-client-app/ ├── config.py ├── flask_backup.py ├── flask_restore.py ├── manage.py ├── logs/ │ ├── pipeline.log ├── project/ │ ├── init.py │ ├── client_app/ │ │ ├── error_handlers.py │ │ ├── file_utils/ │ │ │ ├── file_handlers.py │ │ │ ├── hash_utils.py │ │ ├── operations/ │ │ │ ├── cleanup_operations.py │ │ │ ├── file_operations.py │ │ ├── routes/ │ │ │ ├── cleanup_routes.py │ │ │ ├── history_routes.py │ ├── utils/ │ │ ├── cleanup_utils.py │ │ ├── directory_utils.py │ ├── static/ │ │ ├── css/ │ │ │ ├── bootstrap.min.css │ │ ├── js/ │ │ │ ├── file-processing/ │ ├── templates/ │ │ ├── 404.html │ │ ├── base.html │ ├── tmp/
+### Admin Portal Features
 
-csharp
-Copy code
+- Overview of all uploaded files
+- File verification status monitoring
+- Approval workflow management
+- Detailed metadata viewing
+- Search functionality
+- File deletion management
+- Chunk status monitoring
+- Support for resubmitting failed chunks
 
-## Getting Started
-
-Follow these steps to set up and run the project on your local machine.
+## Technical Details
 
 ### Prerequisites
 
-Ensure you have Python and Flask installed. You can install Flask and other dependencies by running:
+- Python 3.x
+- Flask
+- Bootstrap 5.1.3
+- jQuery 3.6.0
 
+### Directory Structure
+
+```
+.
+├── admin-app/       # Admin portal application
+├── client-app/      # Client portal application
+├── config.py        # Configuration settings
+├── manage.py        # Application entry point
+└── project/         # Main application code
+```
+
+### Key Components
+
+1. **File Processing**
+   - Chunked file upload system
+   - MD5 hash verification
+   - Automatic file renaming
+   - Progress tracking
+
+2. **Data Management**
+   - JSON-based metadata storage
+   - File system organization
+   - Search functionality
+   - Status tracking
+
+3. **Security Features**
+   - File integrity verification
+   - Secure file handling
+   - Access controls
+   - Error logging
+
+### Configuration
+
+Key settings in `config.py`:
+- `UPLOAD_FOLDER`: Directory for file storage
+- `MAX_FILE_SIZE_GB`: Maximum file size (default 200GB)
+- `SYSTEM_NAME`: System identifier
+- `STATIC_FOLDER`: Static files location
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone [repository-url]
+```
+
+2. Create and activate a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
-Installation
-Clone the repository:
+```
 
-bash
-Copy code
-git clone https://github.com/your-username/flask-backup.git
-cd flask-backup
-Configure your environment settings in config.py to customise the application.
+4. Configure settings in `config.py`
 
-Start the Flask application:
-
-bash
-Copy code
+5. Initialize the application:
+```bash
 python manage.py
-Usage
-Backup: Run flask_backup.py to create backups of specific files and directories.
-Restore: Use flask_restore.py to restore files from a backup.
-Error Logging: Errors are logged in pipeline.log for easy monitoring and debugging.
-Routes: Various routes handle file uploads, metadata management, and data validation.
-License
+```
+
+## Usage
+
+### Client Portal
+
+1. Access the client portal at `http://localhost:5000`
+2. Select files for upload
+3. Fill in required metadata
+4. Review and confirm submission
+5. Monitor upload progress
+6. View upload history
+
+### Admin Portal
+
+1. Access the admin portal at `http://localhost:5001`
+2. View uploaded files and their status
+3. Approve or delete uploads
+4. Monitor chunk status
+5. Manage failed uploads
+6. Search and filter uploads
+
+## Development
+
+### Client-side Architecture
+- Modular JavaScript components
+- State management system
+- Event-driven architecture
+- Bootstrap UI components
+
+### Server-side Architecture
+- Flask blueprints for modularity
+- Robust error handling
+- Logging system
+- File system management
+
+## Error Handling
+
+- Comprehensive error logging
+- User-friendly error messages
+- Automatic cleanup of failed uploads
+- Recovery mechanisms for failed chunks
+
+## Logging
+
+- Automatic log rotation
+- Detailed error tracking
+- Upload status logging
+- System event logging
+
+## Security Considerations
+
+- File integrity verification
+- Secure file handling
+- Input validation
+- Error message sanitization
+
+## Performance
+
+- Chunked file uploads
+- Asynchronous processing
+- Efficient file system operations
+- Optimized search functionality
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
 This project is licensed under the GNU General Public License v3.0 - see the LICENSE file for details.
 
-Authors
-PeeBee (peebee_github@protonmail.com)
+## Authors
+
+* PeeBee (peebee_github@protonmail.com)
+
+## Support
+
+For support, please email peebee_github@protonmail.com or create an issue in the repository.
+
+## Acknowledgments
+
+- Flask community
+- Bootstrap team
+- jQuery developers
+- Open source contributors
