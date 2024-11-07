@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Portal{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="text-center mb-4">Admin Portal</h1>
+    <div class="search-container">
+        <form action="{{ url_for('admin_app.home') }}" method="get">
+            <div class="input-group">
+                <input type="text" class="form-control" placeholder="Search folder names..." name="search" value="{{ request.args.get('search', '') }}">
+                <div class="input-group-append">
+                    <button class="btn btn-primary" type="submit">Search</button>
+                </div>
+            </div>
+        </form>
+    </div>
+    <div class="card">
+        <div class="card-body">
+            {% if folder_data %}
+                {% for folder in folder_data %}
+                <div class="admin-item">
+                    <div class="admin-item-header">
+                        <h2 class="admin-item-title">{{ folder.operation }}</h2>
+                        <div class="admin-item-status-group">
+                            <span class="status-badge {% if folder.chunk_status == 'FILE UPLOAD COMPLETE' %}status-complete{% else %}status-fail{% endif %}">
+                                {{ folder.chunk_status }}
+                            </span>
+                            {% if folder.processing_method and folder.processing_method.lower() != 'normal' %}
+                            <span class="status-badge processing-method">
+                                {{ folder.processing_method }}
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="admin-item-content">
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Date of Collection</div>
+                            <div class="admin-item-value">{{ folder.date_of_collection }}</div>
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Collection</div>
+                            <div class="admin-item-value">{{ folder.collection }}</div>
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Platform</div>
+                            <div class="admin-item-value">{{ folder.platform }}</div>
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Passwords</div>
+                            <div class="admin-item-value">{{ folder.known_passwords }}</div>
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Notes</div>
+                            <div class="admin-item-value">{{ folder.notes }}</div>
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Filename</div>
+                            <div class="admin-item-value">{{ folder.new_filename }}</div>
+                            {% if folder.new_filename != folder.original_filename %}
+                            <div class="admin-item-subvalue">Original: {{ folder.original_filename }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Device Type</div>
+                            <div class="admin-item-value">{{ folder.device_type }}</div>
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Serial</div>
+                            <div class="admin-item-value">{{ folder.serial }}</div>
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Item Number</div>
+                            <div class="admin-item-value">{{ folder.item_number }}</div>
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Sub Number</div>
+                            <div class="admin-item-value">{{ folder.sub_number }}</div>
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">From System</div>
+                            <div class="admin-item-value">{{ folder.from_system }}</div>
+                        </div>
+                        <div class="admin-item-field">
+                            <div class="admin-item-label">Folder Name</div>
+                            <div class="admin-item-value">{{ folder.folder_name }}</div>
+                        </div>
+                    </div>
+                    <div class="admin-item-actions">
+                        <div>
+                            {% if folder.approved == 'Yes' %}
+                            <button class="btn btn-approve" disabled>APPROVED</button>
+                            {% else %}
+                            <button class="btn btn-approve" data-folder="{{ folder.folder_name }}">APPROVE</button>
+                            {% endif %}
+                            <button class="btn btn-delete" data-folder="{{ folder.folder_name }}">DELETE</button>
+                        </div>
+                        {% if folder.chunk_status != 'FILE UPLOAD COMPLETE' %}
+                        <button class="btn btn-check-status" data-folder="{{ folder.folder_name }}">Check Status</button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+            <p class="text-center">No folders found in the upload directory.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
